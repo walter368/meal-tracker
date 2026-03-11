@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meal Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; padding: 16px; max-width: 500px; margin: 0 auto; }
+    h1 { font-size: 1.4em; margin-bottom: 12px; text-align: center; }
+    .card { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .card h2 { font-size: 1em; margin-bottom: 8px; color: #e94560; }
+    .summary { display: flex; justify-content: space-around; text-align: center; }
+    .summary div { flex: 1; }
+    .summary .num { font-size: 1.8em; font-weight: bold; color: #e94560; }
+    .summary .label { font-size: 0.75em; color: #999; }
+    select, input, button { width: 100%; padding: 10px; margin: 4px 0; border: none; border-radius: 8px; font-size: 1em; }
+    select, input { background: #0f3460; color: #eee; }
+    button { background: #e94560; color: #fff; font-weight: bold; cursor: pointer; }
+    button:active { opacity: 0.8; }
+    .log-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #0f3460; font-size: 0.9em; }
+    .log-item .name { flex: 1; }
+    .log-item .vals { color: #999; }
+    #status { text-align: center; color: #e94560; font-size: 0.85em; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>🍽️ Meal Tracker</h1>
+
+  <div class="card">
+    <h2>Aujourd'hui</h2>
+    <div class="summary">
+      <div><div class="num" id="totalCal">0</div><div class="label">kcal</div></div>
+      <div><div class="num" id="totalProt">0</div><div class="label">g prot</div></div>
+      <div><div class="num" id="totalEntries">0</div><div class="label">entrées</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ajouter un repas</h2>
+    <select id="repas">
+      <option>Petit-déjeuner</option>
+      <option>Encas matin</option>
+      <option>Déjeuner</option>
+      <option>Encas aprem</option>
+      <option>Goûter</option>
+      <option>Dîner</option>
+    </select>
+    <select id="aliment"><option>Chargement...</option></select>
+    <input type="number" id="quantite" placeholder="Quantité (g)">
+    <button onclick="addEntry()">Ajouter</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Journal du jour</h2>
+    <div id="journal"></div>
+  </div>
+
+  <script>
+    const API = "https://script.google.com/macros/s/AKfycbxTp5JmpLo3QIeX9gnfFE3R-IL64ud-1yJ0kmNnh__5z37K-kNTHZJsgZ8JDBFF7CN-/exec";
+    let aliments = [];
+
+    async function loadConfig() {
+      const r = await fetch(API + "?action=getConfig");
+      aliments = await r.json();
+      const sel = document.getElementById("aliment");
+      sel.innerHTML = aliments.map(a => `<option value="${a.aliment}">${a.aliment}</option>`).join("");
+    }
+
+    async function loadJournal() {
+      const r = await fetch(API + "?action=getJournal");
+      const data = await r.json();
+      const today = new Date().toISOString().slice(0, 10);
+      const todayEntries = data.filter(d => d.date === today);
+      
+      let cal = 0, prot = 0;
+      const html = todayEntries.map(e => {
+        cal += Number(e.calories);
+        prot += Number(e.proteines);
+        return `<div class="log-item"><span class="name">${e.repas} — ${e.aliment}</span><span class="vals">${e.quantite_g}g | ${Math.round(e.calories)} kcal | ${Math.round(e.proteines)}g P</span></div>`;
+      }).join("");
+      
+      document.getElementById("journal").innerHTML = html || "<p style='color:#666'>Rien encore</p>";
+      document.getElementById("totalCal").textContent = Math.round(cal);
+      document.getElementById("totalProt").textContent = Math.round(prot);
+      document.getElementById("totalEntries").textContent = todayEntries.length;
+    }
+
+    async function addEntry() {
+      const name = document.getElementById("aliment").value;
+      const qty = parseFloat(document.getElementById("quantite").value);
+      if (!qty) { document.getElementById("status").textContent = "Entre une quantité"; return; }
+      
+      const al = aliments.find(a => a.aliment === name);
+      const calories = (al.calories_100g / 100) * qty;
+      const proteines = (al.proteines_100g / 100) * qty;
+      
+      document.getElementById("status").textContent = "Envoi...";
+      
+      await fetch(API, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "addEntry",
+          date: new Date().toISOString().slice(0, 10),
+          heure: new Date().toTimeString().slice(0, 5),
+          repas: document.getElementById("repas").value,
+          aliment: name,
+          quantite_g: qty,
+          calories: Math.round(calories),
+          proteines: Math.round(proteines * 10) / 10
+        })
+      });
+      
+      document.getElementById("status").textContent = "✅ Ajouté !";
+      document.getElementById("quantite").value = "";
+      loadJournal();
+    }
+
+    loadConfig();
+    loadJournal();
+  </script>
+</body>
+</html>
